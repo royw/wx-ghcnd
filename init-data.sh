@@ -21,12 +21,12 @@ for filename in "${FILES[@]}"
 
 if [ ! -d "${DATA_PATH}/ghcnd_gsn" ]; then
   echo "extracting ${DATA_PATH}/ghcnd_gsn.tar.gz"
-  tar xf "${DATA_PATH}/ghcnd_gsn.tar.gz" --overwrite
+  tar xf "${DATA_PATH}/ghcnd_gsn.tar.gz" --overwrite --directory "${DATA_PATH}"
 fi
 
 if [ ! -d "${DATA_PATH}/ghcnd_hcn" ]; then
   echo "extracting ${DATA_PATH}/ghcnd_hcn.tar.gz"
-  tar xf "${DATA_PATH}/ghcnd_hcn.tar.gz" --overwrite
+  tar xf "${DATA_PATH}/ghcnd_hcn.tar.gz" --overwrite --directory "${DATA_PATH}"
 fi
 
 if [ ! -d .venv ]; then
