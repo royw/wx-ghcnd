@@ -46,59 +46,64 @@ from ghcnd.load import find_daily_path, load_countries, load_dly_file, load_stat
 
 def main() -> None:
     """The command line applications main function."""
-    st.title("Weather Data Explorer")
+    st.set_page_config(page_title="Weather Data Explorer", layout="wide", initial_sidebar_state="auto", menu_items=None)
 
-    # get a country_code by selecting a country
+    with st.container():
+        st.subheader("Weather Station")
+        station_column_1, station_column_2 = st.columns([1, 1])
 
-    countries_df = load_countries()
-    countries_unique_values: list[str] = countries_df["country"].unique()
-    countries_selected_value: str = st.selectbox("Select country", countries_unique_values)
-    countries_filtered_df: DataFrame = countries_df[countries_df["country"] == countries_selected_value]
-    country_code: str = countries_filtered_df["code"].iloc[0]
+        # get a country_code by selecting a country
+        with station_column_1:
+            countries_df = load_countries()
+            countries_unique_values: list[str] = countries_df["country"].unique()
+            countries_selected_value: str = st.selectbox("Select country", countries_unique_values)
+            countries_filtered_df: DataFrame = countries_df[countries_df["country"] == countries_selected_value]
+            country_code: str = countries_filtered_df["code"].iloc[0]
 
-    # from all the stations in the country_code, find station_states_df that contains all the states
-    # that are in the country_code.
+        # from all the stations in the country_code, find station_states_df that contains all the states
+        # that are in the country_code.
 
-    stations_df: DataFrame = load_stations(country_code)
-    stations_country_df: DataFrame = stations_df[stations_df["station_id"].str.startswith(country_code)]
+        stations_df: DataFrame = load_stations(country_code)
+        stations_country_df: DataFrame = stations_df[stations_df["station_id"].str.startswith(country_code)]
 
-    # select a state_code from the stations_country_df
+        # select a state_code from the stations_country_df
+        with station_column_2:
+            stations_states_unique_values: list[str] = stations_country_df["state"].unique()
+            stations_states_selected_value: str = station_column_2.selectbox("Select state", stations_states_unique_values)
+            stations_states_filtered_df: DataFrame = stations_country_df[
+                stations_country_df["state"] == stations_states_selected_value
+            ]
 
-    stations_states_unique_values: list[str] = stations_country_df["state"].unique()
-    stations_states_selected_value: str = st.selectbox("Select state", stations_states_unique_values)
-    stations_states_filtered_df: DataFrame = stations_country_df[
-        stations_country_df["state"] == stations_states_selected_value
-    ]
+        # make the station table selectable by row by using a st.dataframe(pd.dataframe)
+        st.caption("Select station (check box on left of row)")
+        event = st.dataframe(stations_states_filtered_df, selection_mode="single-row", on_select="rerun")
+        rows = event["selection"]["rows"]
+        if len(rows) > 0:
+            # a station is selected
+            station_id = stations_states_filtered_df.iloc[rows]["station_id"].iloc[0]
+            daily_path = find_daily_path(station_id)
+            if daily_path is not None:
+                # we have a gsn or hcn data file for the selected station
+                st.subheader("Historical Data")
+                filter_column_1, filter_column_2 = st.columns([1, 1])
 
-    # make the station table selectable by row by using a st.dataframe(pd.dataframe)
-    event = st.dataframe(stations_states_filtered_df, selection_mode="single-row", on_select="rerun")
-    rows = event["selection"]["rows"]
-    if len(rows) > 0:
-        # a station is selected
-        station_id = stations_states_filtered_df.iloc[rows]["station_id"].iloc[0]
-        daily_path = find_daily_path(station_id)
-        if daily_path is not None:
-            # we have a gsn or hcn data file for the selected station
-            st.subheader("Filter Data")
-            celsius: bool = st.selectbox("Temperature Unit", ["F", "C"]) == "C"
+                with filter_column_1:
+                    celsius: bool = st.selectbox("Temperature Unit", ["F", "C"]) == "C"
 
-            # noinspection PyTypeChecker
-            daily_df: DataFrame = load_dly_file(daily_path, celsius=celsius)
+                with filter_column_2:
+                    # noinspection PyTypeChecker
+                    daily_df: DataFrame = load_dly_file(daily_path, celsius=celsius)
 
-            daily_columns: list[str] = daily_df.columns.tolist()
-            daily_columns.insert(0, daily_columns.pop(daily_columns.index("element")))
-            daily_selected_column: str = st.selectbox("Select column to filter by", daily_columns)
+                    daily_selected_column: str = "element"
+                    daily_unique_values: list[str] = sorted(daily_df[daily_selected_column].unique())
+                    daily_selected_value: str = st.selectbox(
+                        "Select data element", daily_unique_values, index=daily_unique_values.index("TMAX")
+                    )
+                    daily_filtered_df: DataFrame = daily_df[daily_df[daily_selected_column] == daily_selected_value]
 
-            daily_unique_values: list[str] = sorted(daily_df[daily_selected_column].unique())
-            daily_selected_value: str = st.selectbox(
-                "Select value to filter by", daily_unique_values, index=daily_unique_values.index("TMAX")
-            )
-
-            daily_filtered_df: DataFrame = daily_df[daily_df[daily_selected_column] == daily_selected_value]
-
-            x_column: str = "date"
-            y_column: str = "value"
-            st.line_chart(daily_filtered_df.set_index(x_column)[y_column])
+                x_column: str = "date"
+                y_column: str = "value"
+                st.line_chart(daily_filtered_df.set_index(x_column)[y_column])
 
 
 # intentionally not using a __main__ fence as this file is ran from "streamlit run ..."
