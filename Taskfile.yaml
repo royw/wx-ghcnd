@@ -1,0 +1,173 @@
+# SPDX-FileCopyrightText: 2024 Roy Wright
+#
+# SPDX-License-Identifier: MIT
+
+version: "3"
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  build:
+    # [private] build dist packages
+    cmds:
+      - scripts/venv_runner.sh python -m build
+
+  env-prune:
+    # [private] remove development environment (i.e. virtual environments)
+    cmds:
+      - rm -rf .venv
+
+  show-env:
+    # [private] show this front ends environment
+    cmds:
+      - echo "python venv"
+      - echo "==========="
+      - find .venv -maxdepth 1 -type f ! -name ".*" -exec cat '{}' \;
+    silent: true
+
+  make-env:
+    # create virtual environment
+    vars:
+      PYTHON_VERSION:
+        # if the .python-version exists, use the highest version from that file (truncated to Major.Minor), else use "3.12"
+        sh:
+          if test -f .python-version ; then cat .python-version | sort | tail -n
+          1 | sed -u 's/\.[^.]*$//'; else echo "3.12"; fi
+
+    cmds:
+      # virtual environment python does not yet exist, so use a pyenv python
+      - python3 -m venv --clear --upgrade-deps .venv/
+
+    status:
+      # run if the .venv directory does not exist
+      - test -d .venv
+
+  update-env:
+    # [private] Update virtual environment
+    cmds:
+      - task: make-env
+      # [private] update development virtual environment
+      - scripts/venv_runner.sh pip install --upgrade pip
+      # install project into virtual environment
+      - scripts/venv_runner.sh pip install -q -e .[dev,test,metrics]
+
+  lint:
+    desc: Perform static code analysis.
+    cmds:
+      - scripts/venv_runner.sh ruff check --config pyproject.toml --fix src
+        tests
+      - scripts/venv_runner.sh scripts/run-mypy-all-python-versions.sh
+      - scripts/venv_runner.sh pyupgrade --py311-plus
+      # Disallow improper capitalization
+      - scripts/fail_on_regex_match.sh "PyBind|Numpy|Cmake|CCache|Github|PyTest"
+      # lint shell scripts
+      - 'git ls-files -z -- "*.sh" | xargs -0 scripts/venv_runner.sh shellcheck'
+
+  format:
+    desc: Check and reformat the code to a coding standard.
+    cmds:
+      - scripts/venv_runner.sh ruff format --config pyproject.toml src tests
+      - 'git ls-files -z -- "*.md" "*.py" | xargs -0 --verbose
+        scripts/venv_runner.sh blacken-docs'
+
+  execute-pre-commit:
+    # [private] internal task for running the pre-commit utility directly and conditionally skipping reuse hook
+    cmds:
+      - SKIP="{{.SKIP}}" pre-commit run --all-files || true
+
+  make:
+    desc: Make the project (format, lint, check, build, metrics).
+    summary: |
+      Make the project
+
+      Format the project, check for code quality, check for compliance,
+      perform unit testing, build distributables, build documentation,
+      and run the application to display its version.
+    cmds:
+      # show project's environment
+      - task: show-env
+      # format the source code
+      - task: format
+      # check for programming errors/warnings
+      - task: lint
+      # check that code can be committed to vcs
+      - task: execute-pre-commit
+      # install current build into dev virtual environment
+      - task: update-env
+      # generate code metrics
+      - task: metrics
+
+  test:
+    desc: Run the unit tests for the supported versions of python.
+    cmds:
+      - scripts/venv_runner.sh pytest tests
+
+  pypi-version:
+    desc:
+      Get the current version of the given package(s) from pypi and output as
+      PEP508 dependency specifier(s).
+    summary: |
+      Get the current version of the given package(s) from pypi and output as PEP508 dependency specifier(s).
+      Example usage:
+      ➤ task pypi_version -- httpx tomlkit
+      task: [pypi_version] scripts/latest_pypi_version.sh httpx tomlkit
+      httpx>=0.27.0
+      tomlkit>=0.13.0
+
+    cmds:
+      - scripts/latest_pypi_version.sh {{.CLI_ARGS}}
+
+  metrics:
+    desc: Analyze the code.
+    cmds:
+      - bash -c "mkdir -p metrics"
+      - scripts/venv_runner.sh radon cc --show-complexity --json --min=A
+        --output-file=metrics/code-complexity.json src/
+      - cat metrics/code-complexity.json | scripts/venv_runner.sh python3
+        scripts/metrics_cc_filter.py | head -n 20
+      - scripts/venv_runner.sh radon hal --json
+        --output-file=metrics/halstead-metrics.json src/
+      - scripts/venv_runner.sh radon mi --json
+        --output-file=metrics/maintainability-index.json src/
+      - scripts/venv_runner.sh radon raw --json
+        --output-file=metrics/raw-metrics.json src/
+
+  clean:
+    desc: Remove virtual environments and generated files.
+    cmds:
+      - pre-commit clean
+      - task: env-prune
+      - rm -rf .tox
+      - rm -rf .nox
+      - rm -rf .coverage
+      - rm -rf build
+      - rm -rf dist
+      - rm -rf metrics
+      - rm -rf site
+      - rm -rf src/*.egg-info
+      - rm -rf tests/__pycache__
+      - rm -rf .*_cache
+      - rm -f requirements.txt
+      - rm -f requirements.txt.license
+      - rm -f requirements/requirements*.txt
+      - rm -f requirements/requirements*.txt.license
+      - rm -f poetry.lock
+      - task: deactivate
+
+  deactivate:
+    # [private] if a virtual environment is active, deactivate it.
+    cmds:
+      - source .venv/bin/deactivate 2>/dev/null || true
+
+  main:
+    desc:
+      "Run the application's script in the virtual environment's bin directory."
+    cmds:
+      - scripts/venv_runner.sh streamlit run src/wx-ghcnd.py
+
+  version-bumper:
+    desc: "Manage the project's version with version-bumper"
+    cmds:
+      - scripts/venv_runner.sh version_bumper {{.CLI_ARGS}}

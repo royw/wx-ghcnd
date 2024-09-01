@@ -11,11 +11,11 @@ declare -a FILES=("ghcnd-countries.txt" "ghcnd-states.txt" "ghcnd-stations.txt" 
 for filename in "${FILES[@]}"
   do
     if [ -f "${DATA_PATH}/${filename}" ]; then
-      echo "skipping "${DATA_PATH}/${filename}""
+      echo "skipping ${DATA_PATH}/${filename}"
     else
       url="${BASE_URL}/${filename}"
-      echo "getting "${DATA_PATH}/${filename}""
-      $(curl --remote-name --output-dir "${DATA_PATH}" "${url}")
+      echo "getting ${DATA_PATH}/${filename}"
+      curl --remote-name --output-dir "${DATA_PATH}" "${url}"
     fi
   done
 
