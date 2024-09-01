@@ -1,2 +1,8 @@
 data
 .venv
+dist
+metrics
+node_modules
+src/*.egg-info
+.coverage
+
